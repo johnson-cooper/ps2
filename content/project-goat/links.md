@@ -1,3 +1,3 @@
 ## Links
 
-[Project repository](https://github.com/johnson-cooper/project-goat/tree/ps2-port)
+[Source](https://github.com/johnson-cooper/project-goat/releases)

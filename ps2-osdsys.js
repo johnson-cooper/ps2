@@ -311,6 +311,16 @@
         this.root.querySelector('.ps2-stage--main')?.setAttribute('aria-label', title);
       }
 
+      const uiLabels = [
+        ['[data-ui-select-label]', siteDoc.meta['select-label']],
+        ['[data-ui-back-label]', siteDoc.meta['back-label']],
+        ['[data-ui-input-label]', siteDoc.meta['input-label']]
+      ];
+      uiLabels.forEach(([selector, value]) => {
+        const node = this.root.querySelector(selector);
+        if (node) node.textContent = value || '';
+      });
+
       const projectLinks = PS2Markdown.navigationLinks(site.markdown);
       if (!projectLinks.length) {
         throw new Error('The site manifest does not contain any project links.');

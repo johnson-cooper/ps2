@@ -1,5 +1,8 @@
 ---
 title: "XVX - PS2 PORTS"
+select-label: "Select"
+back-label: "Back"
+input-label: "Mouse"
 ---
 
 # Projects

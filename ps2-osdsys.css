@@ -24,16 +24,29 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; background: #000; }
-body { min-height: 100vh; overflow: hidden; font-family: var(--ps2-font); }
+html, body {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+  background: #000;
+}
+html { height: 100%; }
+body {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  font-family: var(--ps2-font);
+}
 button, a { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 
 .ps2-screen {
   position: relative;
-  width: 100vw;
+  width: 100%;
   height: 100vh;
-  min-height: 430px;
+  height: 100dvh;
+  min-height: 0;
   overflow: hidden;
   color: var(--ps2-text);
   background:
@@ -488,12 +501,335 @@ button { -webkit-tap-highlight-color: transparent; }
   .ps2-back-button { position: relative; }
 }
 
-@media (max-width: 760px), (max-aspect-ratio: 1/1) {
-  .ps2-ambient { left: 27%; top: 39%; opacity: .45; }
-  .ps2-menu { left: 42%; top: 52%; width: 52vw; }
-  .ps2-project-heading { top: 8vh; max-width: 76vw; }
-  .ps2-submenu { left: 37%; top: 39%; width: 58vw; }
-  .ps2-detail-copy { left: 37%; top: 58%; width: 57vw; max-height: 29vh; }
+/* ---- responsive layouts ---- */
+
+/* Tablet / narrow desktop: keep the PS2 composition, but stop using
+   desktop-only horizontal offsets that can push content off-screen. */
+@media (max-width: 900px) {
+  :root {
+    --ps2-safe-x: clamp(22px, 5vw, 48px);
+    --ps2-safe-y: clamp(20px, 4vh, 38px);
+  }
+
+  .ps2-site-title {
+    left: max(var(--ps2-safe-x), env(safe-area-inset-left, 0px));
+    top: max(var(--ps2-safe-y), env(safe-area-inset-top, 0px));
+    max-width: calc(100vw - 2 * var(--ps2-safe-x));
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ps2-ambient {
+    left: 30%;
+    top: 43%;
+    width: min(34vw, 260px);
+    height: min(29vw, 210px);
+    opacity: .52;
+  }
+
+  .ps2-menu {
+    left: 43%;
+    right: max(var(--ps2-safe-x), env(safe-area-inset-right, 0px));
+    top: 51%;
+    width: auto;
+    max-height: 68vh;
+  }
+
+  .ps2-menu-item {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .ps2-menu-title,
+  .ps2-menu-subtitle,
+  .ps2-submenu button {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .ps2-project-heading {
+    left: max(var(--ps2-safe-x), env(safe-area-inset-left, 0px));
+    top: max(clamp(76px, 12vh, 112px), calc(env(safe-area-inset-top, 0px) + 54px));
+    max-width: 42vw;
+  }
+
+  .ps2-submenu,
+  .ps2-detail-copy {
+    left: 45%;
+    right: max(var(--ps2-safe-x), env(safe-area-inset-right, 0px));
+    width: auto;
+  }
+
+  .ps2-footer {
+    left: max(var(--ps2-safe-x), env(safe-area-inset-left, 0px));
+    right: max(var(--ps2-safe-x), env(safe-area-inset-right, 0px));
+    bottom: max(var(--ps2-safe-y), env(safe-area-inset-bottom, 0px));
+  }
+
+  .ps2-markdown img {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+  }
+}
+
+/* Phones in portrait: switch from the split desktop composition to a
+   vertical OSDSYS layout. The detail body gets the remaining viewport and
+   scrolls internally, so even very small screens remain usable. */
+@media (max-width: 640px) and (orientation: portrait) {
+  :root {
+    --ps2-safe-x: 20px;
+    --ps2-safe-y: 18px;
+  }
+
+  .ps2-screen {
+    min-height: 0;
+  }
+
+  .ps2-site-title {
+    left: max(20px, env(safe-area-inset-left, 0px));
+    right: max(20px, env(safe-area-inset-right, 0px));
+    top: max(18px, env(safe-area-inset-top, 0px));
+    max-width: none;
+    font-size: clamp(11px, 3.5vw, 15px);
+    letter-spacing: .12em;
+  }
+
+  .ps2-ambient {
+    left: 50%;
+    top: 44%;
+    width: min(58vw, 240px);
+    height: min(44vw, 190px);
+    opacity: .34;
+  }
+
+  .ps2-menu {
+    left: max(22px, env(safe-area-inset-left, 0px));
+    right: max(22px, env(safe-area-inset-right, 0px));
+    top: 49%;
+    width: auto;
+    max-height: min(66vh, 560px);
+    gap: clamp(5px, 1.2vh, 10px);
+  }
+
+  .ps2-menu-item {
+    width: 100%;
+    min-width: 0;
+    padding-block: .08em;
+  }
+
+  .ps2-menu-title {
+    font-size: clamp(27px, 9vw, 44px);
+    line-height: 1;
+    white-space: normal;
+  }
+
+  .ps2-menu-subtitle {
+    max-width: 100%;
+    font-size: clamp(11px, 3.4vw, 15px);
+    white-space: normal;
+  }
+
+  .ps2-project-heading {
+    left: max(20px, env(safe-area-inset-left, 0px));
+    right: max(20px, env(safe-area-inset-right, 0px));
+    top: max(68px, calc(env(safe-area-inset-top, 0px) + 48px));
+    max-width: none;
+  }
+
+  .ps2-project-eyebrow {
+    margin-bottom: .45em;
+    font-size: clamp(9px, 2.8vw, 12px);
+  }
+
+  .ps2-project-heading h1 {
+    font-size: clamp(26px, 8vw, 40px);
+    overflow-wrap: anywhere;
+  }
+
+  .ps2-submenu {
+    left: max(20px, env(safe-area-inset-left, 0px));
+    right: max(20px, env(safe-area-inset-right, 0px));
+    top: max(154px, calc(env(safe-area-inset-top, 0px) + 132px));
+    width: auto;
+    transform: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+  }
+
+  .ps2-submenu button {
+    min-height: 38px;
+    font-size: clamp(20px, 6.7vw, 30px);
+    line-height: 1;
+    white-space: normal;
+  }
+
+  .ps2-detail-copy {
+    left: max(20px, env(safe-area-inset-left, 0px));
+    right: max(20px, env(safe-area-inset-right, 0px));
+    top: max(214px, calc(env(safe-area-inset-top, 0px) + 192px));
+    bottom: max(78px, calc(env(safe-area-inset-bottom, 0px) + 66px));
+    width: auto;
+    max-height: none;
+    padding-right: 8px;
+  }
+
+  .ps2-markdown {
+    font-size: clamp(13px, 3.75vw, 16px);
+    line-height: 1.46;
+  }
+
+  .ps2-markdown p {
+    max-width: none;
+  }
+
+  .ps2-markdown img {
+    max-height: min(28vh, 230px);
+    margin: .55em 0 .8em;
+  }
+
+  .ps2-footer {
+    left: max(18px, env(safe-area-inset-left, 0px));
+    right: max(18px, env(safe-area-inset-right, 0px));
+    bottom: max(14px, env(safe-area-inset-bottom, 0px));
+    gap: clamp(16px, 6vw, 32px);
+    font-size: clamp(15px, 5vw, 22px);
+  }
+
+  .ps2-hint--mouse {
+    display: none;
+  }
+
+  .ps2-screen.has-project .ps2-ambient {
+    opacity: .2;
+    transform: translate(-50%, -50%) scale(.92);
+  }
+}
+
+/* Short phone landscape / small-height windows need a denser two-column
+   arrangement rather than the portrait stack. */
+@media (max-height: 520px) and (orientation: landscape) {
+  :root {
+    --ps2-safe-x: 18px;
+    --ps2-safe-y: 12px;
+  }
+
+  .ps2-site-title {
+    left: max(18px, env(safe-area-inset-left, 0px));
+    top: max(12px, env(safe-area-inset-top, 0px));
+    font-size: clamp(10px, 1.8vw, 13px);
+  }
+
+  .ps2-ambient {
+    left: 27%;
+    top: 52%;
+    width: min(24vw, 190px);
+    height: min(18vw, 140px);
+    opacity: .34;
+  }
+
+  .ps2-menu {
+    left: 45%;
+    right: max(22px, env(safe-area-inset-right, 0px));
+    top: 50%;
+    width: auto;
+    max-height: 72vh;
+    gap: 2px;
+  }
+
+  .ps2-menu-title {
+    font-size: clamp(23px, 5.2vh, 34px);
+  }
+
+  .ps2-menu-subtitle {
+    font-size: clamp(10px, 2.7vh, 13px);
+  }
+
+  .ps2-project-heading {
+    left: max(18px, env(safe-area-inset-left, 0px));
+    top: max(48px, calc(env(safe-area-inset-top, 0px) + 34px));
+    max-width: 38vw;
+  }
+
+  .ps2-project-eyebrow {
+    margin-bottom: .35em;
+    font-size: clamp(8px, 2.3vh, 11px);
+  }
+
+  .ps2-project-heading h1 {
+    font-size: clamp(22px, 6vh, 34px);
+    overflow-wrap: anywhere;
+  }
+
+  .ps2-submenu {
+    left: 43%;
+    right: max(18px, env(safe-area-inset-right, 0px));
+    top: 29%;
+    width: auto;
+    transform: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 5px 20px;
+  }
+
+  .ps2-submenu button {
+    min-height: 30px;
+    font-size: clamp(18px, 5vh, 27px);
+  }
+
+  .ps2-detail-copy {
+    left: 43%;
+    right: max(18px, env(safe-area-inset-right, 0px));
+    top: 48%;
+    bottom: max(48px, calc(env(safe-area-inset-bottom, 0px) + 38px));
+    width: auto;
+    max-height: none;
+    padding-right: 8px;
+  }
+
+  .ps2-markdown {
+    font-size: clamp(11px, 2.9vh, 14px);
+    line-height: 1.4;
+  }
+
+  .ps2-markdown img {
+    max-height: 20vh;
+  }
+
+  .ps2-footer {
+    left: max(18px, env(safe-area-inset-left, 0px));
+    right: max(18px, env(safe-area-inset-right, 0px));
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    gap: 24px;
+    font-size: clamp(14px, 3.8vh, 19px);
+  }
+
+  .ps2-hint--mouse {
+    display: none;
+  }
+}
+
+/* Touch targets can be larger than their visible typography without adding
+   web-style boxes or changing the PS2 aesthetic. */
+@media (pointer: coarse) {
+  .ps2-menu-item,
+  .ps2-submenu button,
+  .ps2-back-button {
+    touch-action: manipulation;
+  }
+
+  .ps2-menu-item {
+    min-height: 44px;
+  }
+
+  .ps2-back-button {
+    min-height: 40px;
+  }
+
+  .ps2-hint--mouse {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

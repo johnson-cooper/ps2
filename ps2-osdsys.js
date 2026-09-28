@@ -1,9 +1,11 @@
 /*
- * PS2 OSDSYS Portfolio controller v7
- * Mouse-only navigation + click-locked submenus + dependency-free Markdown loading/rendering.
+ * PS2 OSDSYS Portfolio controller v8
+ * Mouse-only navigation + click-locked submenus + Markdown-driven site/project manifests.
  */
 (function () {
   'use strict';
+
+  const SITE_MANIFEST = 'content/site.md';
 
   class PS2Markdown {
     static escapeHtml(value) {
@@ -20,8 +22,6 @@
       if (!raw) return '#';
       if (/^(javascript|vbscript|data):/i.test(raw)) return '#';
 
-      // Resolve relative Markdown links/images from the Markdown file itself,
-      // not from index.html. Absolute URLs, hashes, mailto:, etc. are retained.
       try {
         if (baseUrl && !/^[a-z][a-z0-9+.-]*:/i.test(raw) && !raw.startsWith('#')) {
           const mdUrl = new URL(baseUrl, window.location.href);
@@ -37,7 +37,6 @@
       const meta = {};
       let body = source;
 
-      // Small dependency-free front-matter parser for simple key: value data.
       if (source.startsWith('---\n')) {
         const end = source.indexOf('\n---\n', 4);
         if (end !== -1) {
@@ -93,6 +92,22 @@
         subtitle: meta.subtitle || meta['menu-subtitle'] || inferredSubtitle,
         eyebrow: meta.eyebrow || ''
       };
+    }
+
+    static navigationLinks(markdown) {
+      const { body } = PS2Markdown.parseDocument(markdown);
+      const links = [];
+      const pattern = /^\s*(?:[-+*]\s+|\d+[.)]\s+)?\[([^\]]+)\]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)\s*$/gm;
+      let match;
+
+      while ((match = pattern.exec(body)) !== null) {
+        links.push({
+          label: PS2Markdown.plainText(match[1]),
+          path: match[2].trim()
+        });
+      }
+
+      return links;
     }
 
     static inline(source, baseUrl = null) {
@@ -249,65 +264,171 @@
       this.root = typeof root === 'string' ? document.querySelector(root) : root;
       if (!this.root) throw new Error('PS2Portfolio: root not found');
 
-      this.mainItems = [...this.root.querySelectorAll('.ps2-menu [data-project]')];
-      this.projects = [...this.root.querySelectorAll('.ps2-project')];
+      this.menu = this.root.querySelector('[data-project-menu]');
+      this.detailStage = this.root.querySelector('.ps2-stage--detail');
+      this.siteTitle = this.root.querySelector('[data-site-title]');
       this.backButton = this.root.querySelector('[data-ps2-back]');
-      this.mainIndex = Math.max(0, this.mainItems.findIndex(el => el.classList.contains('is-selected')));
+      this.mainItems = [];
+      this.projects = [];
+      this.mainIndex = 0;
       this.activeProject = null;
       this.subIndex = 0;
       this.mdCache = new Map();
       this.requestCounter = 0;
 
-      this.disableKeyboardFocus();
-      this.bindMain();
-      this.bindProjects();
+      this.root.addEventListener('mousedown', event => {
+        if (event.target.closest('button, a')) event.preventDefault();
+      });
       this.bindBack();
-      this.selectMain(this.mainIndex);
-      this.hydrateMenuMetadata();
+      this.init();
+    }
+
+    async init() {
+      try {
+        await this.buildFromMarkdown();
+        this.refreshCollections();
+        this.disableKeyboardFocus();
+        this.bindMain();
+        this.bindProjects();
+        this.selectMain(0);
+      } catch (error) {
+        this.showConfigurationError(error);
+      }
+    }
+
+    async buildFromMarkdown() {
+      const site = await this.getMarkdown(SITE_MANIFEST);
+      const siteDoc = PS2Markdown.parseDocument(site.markdown);
+      const siteMeta = PS2Markdown.inferMenuMetadata(site.markdown);
+      const title = siteDoc.meta.title || siteMeta.title || '';
+
+      if (this.siteTitle) {
+        this.siteTitle.textContent = title;
+        if (title) this.siteTitle.setAttribute('aria-label', title);
+      }
+      if (title) {
+        document.title = title;
+        this.root.querySelector('.ps2-stage--main')?.setAttribute('aria-label', title);
+      }
+
+      const projectLinks = PS2Markdown.navigationLinks(site.markdown);
+      if (!projectLinks.length) {
+        throw new Error('The site manifest does not contain any project links.');
+      }
+
+      const projectConfigs = await Promise.all(projectLinks.map(async (projectRef, index) => {
+        const manifest = await this.getMarkdown(projectRef.path, site.url);
+        const metadata = PS2Markdown.inferMenuMetadata(manifest.markdown);
+        const sections = PS2Markdown.navigationLinks(manifest.markdown);
+
+        if (!sections.length) {
+          throw new Error(`Project manifest has no section links: ${projectRef.path}`);
+        }
+
+        const titleText = metadata.title || projectRef.label || `Project ${index + 1}`;
+        return {
+          id: this.makeProjectId(titleText, index),
+          title: titleText,
+          subtitle: metadata.subtitle || '',
+          eyebrow: metadata.eyebrow || '',
+          manifestUrl: manifest.url,
+          sections
+        };
+      }));
+
+      this.renderProjects(projectConfigs);
+    }
+
+    renderProjects(projects) {
+      if (!this.menu || !this.detailStage) {
+        throw new Error('Portfolio shell is missing required menu/detail containers.');
+      }
+
+      this.menu.replaceChildren();
+      this.detailStage.replaceChildren();
+
+      projects.forEach((project, projectIndex) => {
+        const menuButton = document.createElement('button');
+        menuButton.type = 'button';
+        menuButton.tabIndex = -1;
+        menuButton.className = 'ps2-menu-item';
+        if (projectIndex === 0) menuButton.classList.add('is-selected');
+        menuButton.dataset.project = project.id;
+
+        const menuTitle = document.createElement('span');
+        menuTitle.className = 'ps2-menu-title';
+        menuTitle.textContent = project.title;
+
+        const menuSubtitle = document.createElement('span');
+        menuSubtitle.className = 'ps2-menu-subtitle';
+        menuSubtitle.textContent = project.subtitle;
+        menuSubtitle.hidden = !project.subtitle;
+
+        menuButton.append(menuTitle, menuSubtitle);
+        this.menu.appendChild(menuButton);
+
+        const article = document.createElement('article');
+        article.className = 'ps2-project';
+        article.id = project.id;
+        article.setAttribute('aria-hidden', 'true');
+
+        const heading = document.createElement('div');
+        heading.className = 'ps2-project-heading';
+
+        const eyebrow = document.createElement('p');
+        eyebrow.className = 'ps2-project-eyebrow';
+        eyebrow.textContent = project.eyebrow;
+        eyebrow.hidden = !project.eyebrow;
+
+        const h1 = document.createElement('h1');
+        h1.textContent = project.title;
+        heading.append(eyebrow, h1);
+
+        const submenu = document.createElement('nav');
+        submenu.className = 'ps2-submenu';
+        submenu.setAttribute('aria-label', `${project.title} information`);
+
+        project.sections.forEach((section, sectionIndex) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.tabIndex = -1;
+          if (sectionIndex === 0) button.classList.add('is-selected');
+          button.dataset.md = section.path;
+          button.dataset.mdBase = project.manifestUrl;
+          button.textContent = section.label;
+          submenu.appendChild(button);
+        });
+
+        const copy = document.createElement('div');
+        copy.className = 'ps2-detail-copy';
+        const markdownTarget = document.createElement('div');
+        markdownTarget.className = 'ps2-markdown';
+        markdownTarget.dataset.mdTarget = '';
+        copy.appendChild(markdownTarget);
+
+        article.append(heading, submenu, copy);
+        this.detailStage.appendChild(article);
+      });
+    }
+
+    refreshCollections() {
+      this.mainItems = [...this.root.querySelectorAll('.ps2-menu [data-project]')];
+      this.projects = [...this.root.querySelectorAll('.ps2-project')];
+      this.mainIndex = Math.max(0, this.mainItems.findIndex(el => el.classList.contains('is-selected')));
+    }
+
+    makeProjectId(title, index) {
+      const slug = String(title || '')
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || `project-${index + 1}`;
+      return `project-${slug}-${index + 1}`;
     }
 
     disableKeyboardFocus() {
       this.root.querySelectorAll('button, a').forEach(el => { el.tabIndex = -1; });
-      this.root.addEventListener('mousedown', event => {
-        if (event.target.closest('button, a')) event.preventDefault();
-      });
-    }
-
-    async hydrateMenuMetadata() {
-      await Promise.all(this.mainItems.map(async item => {
-        const projectId = item.dataset.project;
-        const project = projectId ? this.root.querySelector(`#${CSS.escape(projectId)}`) : null;
-        const overview = project?.querySelector('.ps2-submenu [data-md*="overview"]') ||
-                         project?.querySelector('.ps2-submenu [data-md]');
-        const url = overview?.dataset.md;
-        if (!project || !url) return;
-
-        try {
-          const markdown = await this.getMarkdown(url);
-          const metadata = PS2Markdown.inferMenuMetadata(markdown);
-          const titleNode = item.querySelector('.ps2-menu-title');
-          const subtitleNode = item.querySelector('.ps2-menu-subtitle');
-          const heading = project.querySelector('.ps2-project-heading h1');
-          const eyebrow = project.querySelector('.ps2-project-eyebrow');
-
-          if (metadata.title) {
-            if (titleNode) titleNode.textContent = metadata.title;
-            if (heading) heading.textContent = metadata.title;
-          }
-          if (subtitleNode) {
-            subtitleNode.textContent = metadata.subtitle || '';
-            subtitleNode.hidden = !metadata.subtitle;
-          }
-          if (eyebrow && metadata.eyebrow) eyebrow.textContent = metadata.eyebrow;
-        } catch (_) {
-          const titleNode = item.querySelector('.ps2-menu-title');
-          const subtitleNode = item.querySelector('.ps2-menu-subtitle');
-          if (titleNode && titleNode.textContent === 'Loading...') {
-            titleNode.textContent = projectId.replace(/^project-/, '').replace(/-/g, ' ');
-          }
-          if (subtitleNode) subtitleNode.hidden = true;
-        }
-      }));
     }
 
     bindMain() {
@@ -328,9 +449,6 @@
       this.projects.forEach(project => {
         const buttons = this.getSubItems(project);
         buttons.forEach((button, index) => {
-          // Submenu selection is deliberately click-locked. Hovering another
-          // option may give visual feedback, but it never swaps the Markdown
-          // content or changes the selected item.
           button.addEventListener('click', () => {
             if (project !== this.activeProject) return;
             this.selectSub(index, true);
@@ -363,15 +481,13 @@
 
       this.activeProject = project;
       this.root.classList.add('has-project');
-      this.root.querySelector('.ps2-stage--detail')?.setAttribute('aria-hidden', 'false');
+      this.detailStage?.setAttribute('aria-hidden', 'false');
 
       const items = this.getSubItems(project);
       if (items.length) {
         const selected = items.findIndex(el => el.classList.contains('is-selected'));
         this.subIndex = selected >= 0 ? selected : 0;
         this.selectSub(this.subIndex, true);
-      } else if (project.dataset.md) {
-        this.loadMarkdown(project.dataset.md, project.querySelector('[data-md-target]'));
       }
 
       this.root.dispatchEvent(new CustomEvent('ps2:projectopen', { detail: { id } }));
@@ -384,7 +500,7 @@
       this.activeProject.setAttribute('aria-hidden', 'true');
       this.activeProject = null;
       this.root.classList.remove('has-project');
-      this.root.querySelector('.ps2-stage--detail')?.setAttribute('aria-hidden', 'true');
+      this.detailStage?.setAttribute('aria-hidden', 'true');
       this.root.dispatchEvent(new CustomEvent('ps2:projectclose', { detail: { id } }));
     }
 
@@ -398,9 +514,10 @@
 
       if (load) {
         const button = buttons[this.subIndex];
-        const url = button.dataset.md;
+        const path = button.dataset.md;
+        const baseUrl = button.dataset.mdBase || null;
         const target = this.activeProject.querySelector('[data-md-target]');
-        if (url && target) this.loadMarkdown(url, target);
+        if (path && target) this.loadMarkdown(path, target, baseUrl);
       }
     }
 
@@ -408,18 +525,64 @@
       return project ? [...project.querySelectorAll('.ps2-submenu [data-md]')] : [];
     }
 
-    getMarkdown(url) {
-      if (!this.mdCache.has(url)) {
-        this.mdCache.set(url, fetch(url, { cache: 'no-cache' }).then(response => {
-          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-          return response.text();
-        }));
+    candidateUrls(path, baseUrl = null) {
+      const raw = String(path || '').trim();
+      if (!raw) return [];
+      if (/^(javascript|vbscript|data):/i.test(raw)) return [];
+
+      try {
+        if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('//')) {
+          return [new URL(raw, window.location.href).href];
+        }
+
+        const normalized = raw.replace(/^\.\//, '').replace(/^\/+/, '');
+
+        if (normalized.startsWith('ps2/')) {
+          const candidates = [
+            new URL('/' + normalized, window.location.origin).href,
+            new URL(normalized.slice('ps2/'.length), new URL('.', document.baseURI)).href
+          ];
+          return [...new Set(candidates)];
+        }
+
+        if (raw.startsWith('/')) {
+          return [new URL(raw, window.location.origin).href];
+        }
+
+        return [new URL(raw, baseUrl || document.baseURI).href];
+      } catch (_) {
+        return [raw];
       }
-      return this.mdCache.get(url);
     }
 
-    async loadMarkdown(url, target) {
-      if (!url || !target) return;
+    getMarkdown(path, baseUrl = null) {
+      const cacheKey = `${baseUrl || ''}::${path}`;
+      if (!this.mdCache.has(cacheKey)) {
+        this.mdCache.set(cacheKey, (async () => {
+          const candidates = this.candidateUrls(path, baseUrl);
+          let lastError = null;
+
+          for (const url of candidates) {
+            try {
+              const response = await fetch(url, { cache: 'no-cache' });
+              if (!response.ok) {
+                lastError = new Error(`${response.status} ${response.statusText}`);
+                continue;
+              }
+              return { markdown: await response.text(), url };
+            } catch (error) {
+              lastError = error;
+            }
+          }
+
+          throw lastError || new Error(`Could not resolve ${path}`);
+        })());
+      }
+      return this.mdCache.get(cacheKey);
+    }
+
+    async loadMarkdown(path, target, baseUrl = null) {
+      if (!path || !target) return;
       const requestId = ++this.requestCounter;
       target.dataset.requestId = String(requestId);
       target.classList.remove('is-error');
@@ -427,21 +590,37 @@
       target.innerHTML = '<p>Reading data...</p>';
 
       try {
-        const markdown = await this.getMarkdown(url);
+        const result = await this.getMarkdown(path, baseUrl);
         if (target.dataset.requestId !== String(requestId)) return;
-        target.innerHTML = PS2Markdown.render(markdown, url);
+        target.innerHTML = PS2Markdown.render(result.markdown, result.url);
         target.classList.remove('is-loading');
         target.querySelectorAll('a').forEach(link => {
           link.tabIndex = -1;
           link.addEventListener('mousedown', event => event.preventDefault());
         });
         target.parentElement.scrollTop = 0;
-        this.root.dispatchEvent(new CustomEvent('ps2:markdownloaded', { detail: { url } }));
+        this.root.dispatchEvent(new CustomEvent('ps2:markdownloaded', { detail: { url: result.url } }));
       } catch (error) {
         if (target.dataset.requestId !== String(requestId)) return;
         target.classList.remove('is-loading');
         target.classList.add('is-error');
-        target.innerHTML = `<p>Could not load ${PS2Markdown.escapeHtml(url)}.</p><p>${PS2Markdown.escapeHtml(error.message)}</p>`;
+        target.innerHTML = `<p>Could not load ${PS2Markdown.escapeHtml(path)}.</p><p>${PS2Markdown.escapeHtml(error.message)}</p>`;
+      }
+    }
+
+    showConfigurationError(error) {
+      if (this.menu) {
+        this.menu.replaceChildren();
+        const message = document.createElement('div');
+        message.className = 'ps2-menu-item is-selected';
+        const title = document.createElement('span');
+        title.className = 'ps2-menu-title';
+        title.textContent = 'Content unavailable';
+        const subtitle = document.createElement('span');
+        subtitle.className = 'ps2-menu-subtitle';
+        subtitle.textContent = error?.message || 'Could not load the Markdown configuration.';
+        message.append(title, subtitle);
+        this.menu.appendChild(message);
       }
     }
   }

@@ -11,3 +11,4 @@ input-label: "Mouse"
 - [NZ:P](ps2/content/nzp/project.md)
 - [Project GOAT](ps2/content/project-goat/project.md)
 - [Minecraft](ps2/content/minecraft/project.md)
+- [SSB64](ps2/content/ssb64/project.md)
